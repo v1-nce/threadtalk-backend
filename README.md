@@ -17,7 +17,6 @@ go get github.com/gin-contrib/cors
 
 List of Possible Dependencies:
 go get golang.org/x/time/rate
-# OAuth
 go get github.com/gorilla/sessions
 go get github.com/markbates/goth
 go get github.com/markbates/goth/gothic
