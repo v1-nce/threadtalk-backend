@@ -3,6 +3,7 @@ package router
 import (
 	"database/sql"
 	"time"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-contrib/cors"
@@ -15,29 +16,33 @@ func SetUpRouter(db *sql.DB) *gin.Engine {
 
 	// Apply CORS Middleware
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"}, // Frontend URL
+		AllowOrigins:     []string{os.Getenv("FRONTEND_URL")},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true, // Crucial for cookies
+		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
 
 	authHandler := &handlers.AuthHandler{DB: db}
+	forumHandler := &handlers.ForumHandler{DB: db}
 
 	// Public Routes
-	public := r.Group("/auth")
-	{
-		public.POST("/signup", authHandler.Signup)
-		public.POST("/login", authHandler.Login)
-		public.POST("/logout", authHandler.Logout)
-	}
+	r.POST("/auth/signup", authHandler.Signup)
+	r.POST("/auth/login", authHandler.Login)
+	r.POST("/auth/logout", authHandler.Logout)
+	r.GET("/topics", forumHandler.GetTopics)
+	r.GET("/topics/:topic_id/posts", forumHandler.GetPosts)
+	r.GET("/posts/:post_id", forumHandler.GetPostWithComments)
 
 	// Protected Routes
 	protected := r.Group("/api")
-	protected.Use(middleware.AuthRequired())
+	protected.Use(middleware.AuthMiddleware())
 	{
 		protected.GET("/profile", authHandler.GetProfile)
+		protected.POST("/topics", forumHandler.CreateTopic)
+		protected.POST("/posts", forumHandler.CreatePost)
+		protected.POST("/comments", forumHandler.CreateComment)
 	}
 
 	return r

@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 	"github.com/v1-nce/threadtalk-backend/internal/models"
 	"github.com/v1-nce/threadtalk-backend/internal/utils"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
@@ -32,8 +32,6 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
 		return
 	}
-	token, _ := utils.GenerateToken(user.ID)
-	c.SetCookie("auth_token", token, 3600*24, "/", "", false, true)
 	c.JSON(http.StatusCreated, user)
 }
 
@@ -59,17 +57,26 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
-	c.SetCookie("auth_token", "", -1, "/", "", false, true)
-	c.Status(http.StatusOK)
+	c.SetCookie("auth_token", "", -1, "/", "localhost", false, true)
+	c.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
 }
 
 func (h *AuthHandler) GetProfile(c *gin.Context) {
-	userID, _ := c.Get("userID")
+	userIDVal, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: No user ID found"})
+		return
+	}
+	// Type Assertion
+	userID, ok := userIDVal.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal type mismatch"})
+		return
+	}
 	var user models.User
 	query := `SELECT id, username, created_at, updated_at FROM users WHERE id = $1`
-	if err := h.DB.QueryRow(query, userID); err != nil {
-		c.Status(http.StatusNotFound)
-		return
+	if err := h.DB.QueryRow(query, userID).Scan(&user.ID, &user.Username, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 	}
 	c.JSON(http.StatusOK, user)
 }

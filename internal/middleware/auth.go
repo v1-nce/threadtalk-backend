@@ -7,7 +7,7 @@ import (
 	"github.com/v1-nce/threadtalk-backend/internal/utils"
 )
 
-func AuthRequired() gin.HandlerFunc {
+func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, err := c.Cookie("auth_token")
 		if err != nil {

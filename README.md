@@ -1,3 +1,9 @@
+How to run backend API:
+#1) Set up .env file.
+#2) docker-compose up --build.
+#3) Use docker to run backend and pgAdmin4 for database UI.
+#4) LOL done.
+
 List of Dependencies Applied:
 go get github.com/jackc/pgx/v5/stdlib
 go get github.com/gin-gonic/gin
@@ -16,9 +22,3 @@ go get github.com/gorilla/sessions
 go get github.com/markbates/goth
 go get github.com/markbates/goth/gothic
 go get github.com/markbates/goth/providers/google
-
-How to run backend API:
-#1) Set up .env file
-#2) docker-compose up --build 
-#3) Use docker to run backend
-
