@@ -25,7 +25,7 @@ func Connect() (*sql.DB, error) {
 }
 
 func RunDBMigrations(dbURL string) {
-	m, err := migrate.New("file://internal/db/migrations", dbURL + "?sslmode=disable")
+	m, err := migrate.New("file://internal/db/migrations", dbURL)
 	if err != nil {
 		log.Fatalf("Migration failed due to: %v", err)
 	}
