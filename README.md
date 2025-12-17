@@ -66,3 +66,4 @@ go get github.com/golang-migrate/migrate/v4/source/file
 go get github.com/golang-jwt/jwt/v5
 go get golang.org/x/crypto/bcrypt
 go get github.com/gin-contrib/cors
+go get golang.org/x/time/rate

@@ -24,12 +24,17 @@ func SetUpRouter(db *sql.DB) *gin.Engine {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Rate Limiters
+	publicLimit := middleware.NewRateLimiter(5, 10).Middleware()
+	authLimit := middleware.NewRateLimiter(1, 3).Middleware()
+	r.Use(publicLimit)
+
 	authHandler := &handlers.AuthHandler{DB: db}
 	forumHandler := &handlers.ForumHandler{DB: db}
 
 	// Public Routes
-	r.POST("/auth/signup", authHandler.Signup)
-	r.POST("/auth/login", authHandler.Login)
+	r.POST("/auth/signup", authLimit, authHandler.Signup)
+	r.POST("/auth/login", authLimit, authHandler.Login)
 	r.POST("/auth/logout", authHandler.Logout)
 	r.GET("/topics", forumHandler.GetTopics)
 	r.GET("/topics/:topic_id/posts", forumHandler.GetPosts)
