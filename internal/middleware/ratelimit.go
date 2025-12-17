@@ -20,19 +20,15 @@ type visitor struct {
 	lastSeen time.Time
 }
 
-// NewRateLimiter creates a cleaner instance.
-// r: requests/sec, b: burst size
 func NewRateLimiter(r rate.Limit, b int) *RateLimiter {
 	rl := &RateLimiter{
 		limit: r,
 		burst: b,
 	}
-	// Start background cleanup (fires every minute)
 	go rl.cleanup()
 	return rl
 }
 
-// Middleware returns the Gin handler
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
@@ -58,7 +54,6 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	}
 }
 
-// cleanup removes old entries to prevent memory leaks
 func (rl *RateLimiter) cleanup() {
 	for {
 		time.Sleep(1 * time.Minute)
