@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /main ./cmd/api/main.go
 # Local Development
 FROM alpine:3.19 AS local
 WORKDIR /app
-COPY --from=builder /main /main
+COPY --from=builder /main ./main
 COPY --from=builder /app/internal/db/migrations ./internal/db/migrations
 CMD ["./main"]
 
