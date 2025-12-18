@@ -57,15 +57,15 @@ cd threadtalk-backend
 ### Step 2: Configure Environment
 Create a `.env` file in the root directory:
 ```bash
-# .env
+DB_USER=
+DB_PASSWORD=
+DB_NAME=
 DB_HOST=db
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=threadtalk
-DB_PORT=5432
+DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}?sslmode=disable
+JWT_SECRET=
+FRONTEND_URL=http://localhost:3000
+BACKEND_URL=http://localhost:8080
 PORT=8080
-FRONTEND_URL=
-BACKEND_URL=
 ```
 
 ### Step 3: Start Services
