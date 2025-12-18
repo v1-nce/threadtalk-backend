@@ -2,7 +2,7 @@
 
 > A high-performance, serverless forum backend built with Go and PostgreSQL.
 
-**ThreadTalk** is a scalable REST API providing user authentication, threaded discussions similar to reddit forums. It is engineered to run as a serverless container on AWS Lambda, utilizing the AWS Lambda Web Adapter for seamless portability between local development and cloud execution.
+**ThreadTalk** is a scalable REST API providing user authentication, threaded discussions, and pagination. It is engineered to run as a serverless container on AWS Lambda, utilizing the AWS Lambda Web Adapter for seamless portability between local development and cloud execution.
 
 ## 🚀 Key Features
 * **Authentication:** JWT-based stateless auth (Signup/Login).
@@ -17,21 +17,21 @@
 * **Infrastructure:** AWS Lambda (Docker Image), ECR, CloudWatch
 * **Tooling:** Docker, GitHub Actions, `golang-migrate`
 
-## 🏗 Cloud Architecture (Current Deployment)
+## 🏗 Cloud Architecture
 
 ```mermaid
 graph TD
-    User[User / Frontend] -->|HTTPS Requests| FuncURL[Lambda Function URL]
+    User["User / Frontend"] -->|HTTPS Requests| FuncURL["Lambda Function URL"]
     
     subgraph "AWS Cloud (Region: ap-southeast-2)"
-        FuncURL -->|JSON Event| WebAdapter[AWS Lambda Web Adapter]
+        FuncURL -->|JSON Event| WebAdapter["AWS Lambda Web Adapter"]
         
         subgraph "VPC (Virtual Private Cloud)"
             subgraph "Lambda Container"
-                WebAdapter -->|HTTP localhost:8080| GoApp[Go Backend (Gin)]
+                WebAdapter -->|HTTP localhost:8080| GoApp["Go Backend (Gin)"]
             end
             
-            GoApp -->|TCP :5432| RDS[(Amazon RDS PostgreSQL)]
+            GoApp -->|TCP :5432| RDS[("Amazon RDS PostgreSQL")]
         end
     end
     
