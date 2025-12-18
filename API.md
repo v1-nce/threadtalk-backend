@@ -1,4 +1,5 @@
 == API Summary TLDR ==
+This is for my personal ease-of-use lol.
 
 POST /auth/signup
 Request:
@@ -193,9 +194,9 @@ go get github.com/golang-migrate/migrate/v4/source/file
 go get github.com/golang-jwt/jwt/v5
 go get golang.org/x/crypto/bcrypt
 go get github.com/gin-contrib/cors
+go get golang.org/x/time/rate
 
 List of Possible Dependencies:
-go get golang.org/x/time/rate
 go get github.com/gorilla/sessions
 go get github.com/markbates/goth
 go get github.com/markbates/goth/gothic

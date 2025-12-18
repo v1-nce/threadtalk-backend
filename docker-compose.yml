@@ -1,4 +1,4 @@
-# This is for development
+# This is for local development
 version: '3.8'
 
 networks:
@@ -31,6 +31,7 @@ services:
   backend:
     build:
       context: .
+      target: local
       dockerfile: Dockerfile
     
     container_name: threadtalk_api

@@ -1,69 +1,84 @@
-ThreadTalk is a small forum-style backend API written in Go. It provides user
-authentication (signup/login), topics, posts and threaded comments with basic
-pagination and JWT-based auth.
+# ThreadTalk Backend API
 
-**Tech stack:** Go (Gin), PostgreSQL, golang-migrate, Docker
+> A high-performance, serverless forum backend built with Go and PostgreSQL.
 
-## Quickstart
+**ThreadTalk** is a scalable REST API providing user authentication, threaded discussions similar to reddit forums. It is engineered to run as a serverless container on AWS Lambda, utilizing the AWS Lambda Web Adapter for seamless portability between local development and cloud execution.
 
-Prerequisites: `Go 1.25+`, `Docker` (optional for containerized run), and a
-PostgreSQL instance.
+## 🚀 Key Features
+* **Authentication:** JWT-based stateless auth (Signup/Login).
+* **Forum Core:** Topics, Posts, and nested Comments.
+* **Architecture:** Serverless (Scale-to-Zero) with AWS Lambda.
+* **Security:** Production-grade VPC isolation and BCrypt password hashing.
+* **DevOps:** Automated CI/CD pipeline via GitHub Actions.
 
-1. Copy or create a `.env` file in the project root (see the provided `.env` for
-	 a working example). Make sure `DATABASE_URL` and `PORT` are set.
-2. To run with Docker (recommended):
+## 🛠 Tech Stack
+* **Language:** Go (Gin Framework)
+* **Database:** PostgreSQL 15 (AWS RDS)
+* **Infrastructure:** AWS Lambda (Docker Image), ECR, CloudWatch
+* **Tooling:** Docker, GitHub Actions, `golang-migrate`
 
+## 🏗 Cloud Architecture (Current Deployment)
+
+```mermaid
+graph TD
+    User[User / Frontend] -->|HTTPS Requests| FuncURL[Lambda Function URL]
+    
+    subgraph "AWS Cloud (Region: ap-southeast-2)"
+        FuncURL -->|JSON Event| WebAdapter[AWS Lambda Web Adapter]
+        
+        subgraph "VPC (Virtual Private Cloud)"
+            subgraph "Lambda Container"
+                WebAdapter -->|HTTP localhost:8080| GoApp[Go Backend (Gin)]
+            end
+            
+            GoApp -->|TCP :5432| RDS[(Amazon RDS PostgreSQL)]
+        end
+    end
+    
+    style User fill:#f9f,stroke:#333,stroke-width:2px
+    style RDS fill:#3f3,stroke:#333,stroke-width:2px
+    style GoApp fill:#3f3,stroke:#333,stroke-width:2px
+```
+
+## ⚡ Getting Started (Local Development)
+
+Follow these steps to run the backend and database on your own machine.
+
+### Prerequisites
+* **Docker Desktop** (Running)
+* **Go 1.23+** (Optional, if running outside Docker)
+
+### Step 1: Clone the Repository
+```bash
+git clone [https://github.com/v1-nce/threadtalk-backend.git](https://github.com/v1-nce/threadtalk-backend.git)
+cd threadtalk-backend
+```
+
+### Step 2: Configure Environment
+Create a `.env` file in the root directory:
+```bash
+# .env
+DB_HOST=db
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=threadtalk
+DB_PORT=5432
+PORT=8080
+FRONTEND_URL=
+BACKEND_URL=
+```
+
+### Step 3: Start Services
+Run the entire stack (Go Backend + Postgres Database) with one command:
 ```bash
 docker-compose up --build
 ```
 
-3. To run locally without Docker:
+### Step 4: Verify
+* **API:** Accessible at `http://localhost:8080`
+* **Database:** Accessible on port `5432`
 
+To stop the services, press `Ctrl+C` or run:
 ```bash
-# Start Postgres locally and ensure DATABASE_URL points to it
-go run ./cmd/api
+docker-compose down
 ```
-
-The server will run on `http://localhost:${PORT}` (default `8080`). On startup,
-database migrations in `internal/db/migrations` are applied automatically.
-
-## Configuration
-Key environment variables (see `.env`):
-
-- `DB_USER`, `DB_PASSWORD`, `DB_NAME` — used by `docker-compose` when running
-	Postgres
-- `DATABASE_URL` — full Postgres connection string used by the app
-- `JWT_SECRET` — used to sign authentication tokens
-- `FRONTEND_URL`, `BACKEND_URL` — CORS / allowed origins
-- `PORT` — HTTP server port (default `8080`)
-
-## Project structure
-
-- `cmd/api` — application entry (`main.go`)
-- `internal/db` — DB connection and migrations
-- `internal/handlers` — HTTP handlers (auth, forum, etc.)
-- `internal/middleware` — middleware (auth)
-- `internal/models` — domain models (user, forum/topic)
-- `internal/router` — router setup
-- `internal/utils` — helpers (JWT helpers)
-- `internal/db/migrations` — SQL migration files
-- `API.md` — API endpoint summaries and examples
-
-## API
-See [API.md](API.md) for a short summary of available endpoints (signup, login,
-topics, posts, comments, profile).
-
-## Development notes
-
-- The Dockerfile builds a static Go binary and copies migrations into the
-	image, so the container runs migrations at startup.
-- Use `go env` and `go run ./cmd/api` to run the server locally.
-
-If you'd like, I can add a `.env.example` and a short health-check endpoint next.
-golang-migrate/migrate/v4
-go get github.com/golang-migrate/migrate/v4/database/postgres
-go get github.com/golang-migrate/migrate/v4/source/file
-go get github.com/golang-jwt/jwt/v5
-go get golang.org/x/crypto/bcrypt
-go get github.com/gin-contrib/cors
-go get golang.org/x/time/rate
