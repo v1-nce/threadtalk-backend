@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main # Run when code is pushed to main
+  workflow_dispatch: # Manual workflow dispatch
 
 permissions:
   id-token: write   # Required for OIDC authentication
