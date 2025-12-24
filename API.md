@@ -28,6 +28,7 @@ Response:
     "created_at": "2024-12-12T10:30:00Z",
     "updated_at": "2024-12-12T10:30:00Z"
 }
+Note: Authentication token is set via HttpOnly cookie (auth_token)
 
 POST /auth/logout
 Request:
@@ -38,6 +39,7 @@ Response:
 
 GET /api/profile
 Request:
+Requires authentication (JWT cookie)
 Response:
 {
     "id": 1,
@@ -77,10 +79,11 @@ Response:
     "description": "Gaming discussions and reviews",
     "created_at": "2024-12-12T10:30:00Z"
 }
+Note: No authentication is enforced in the current handler
 
 GET /topics/:topic_id/posts
 Request:
-Query params: cursor (optional) 
+Query params: cursor (optional), search (optional)
 Example: /topics/1/posts?cursor=81
 Response:
 {
@@ -90,14 +93,16 @@ Response:
             "title": "How to learn Go?",
             "content": "I'm new to Go programming...",
             "created_at": "2024-12-12T10:30:00Z",
-            "username": "john_doe"
+            "username": "john_doe",
+            "comment_count": 5
         },
         {
             "id": 99,
             "title": "Best practices for error handling",
             "content": "What are your thoughts on...",
             "created_at": "2024-12-12T09:15:00Z",
-            "username": "jane_smith"
+            "username": "jane_smith",
+            "comment_count": 2
         }
     ],
     "next_cursor": "81"
@@ -110,6 +115,7 @@ Request:
     "content": "string",
     "topic_id": 1
 }
+Requires authentication
 Response:
 {
     "id": 101,
@@ -130,7 +136,8 @@ Response:
         "title": "How to learn Go?",
         "content": "I'm new to programming...",
         "created_at": "2024-12-12T10:00:00Z",
-        "username": "john_doe"
+        "username": "john_doe",
+        "comment_count": 3
     },
     "comments": [
         {
@@ -172,6 +179,7 @@ Request:
     "parent_id": null
 }
 Note: parent_id is null for root comments, or ID of parent comment for replies
+Requires authentication
 Response:
 {
     "id": 5,

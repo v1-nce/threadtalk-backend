@@ -10,9 +10,11 @@ import (
 )
 
 type RateLimiter struct {
-	ips    sync.Map
-	limit  rate.Limit
-	burst  int
+	ips      sync.Map
+	limit    rate.Limit
+	burst    int
+	stopChan chan struct{}
+	stopped  sync.Once
 }
 
 type visitor struct {
@@ -22,11 +24,18 @@ type visitor struct {
 
 func NewRateLimiter(r rate.Limit, b int) *RateLimiter {
 	rl := &RateLimiter{
-		limit: r,
-		burst: b,
+		limit:    r,
+		burst:    b,
+		stopChan: make(chan struct{}),
 	}
 	go rl.cleanup()
 	return rl
+}
+
+func (rl *RateLimiter) Stop() {
+	rl.stopped.Do(func() {
+		close(rl.stopChan)
+	})
 }
 
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
@@ -55,14 +64,21 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 }
 
 func (rl *RateLimiter) cleanup() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(1 * time.Minute)
-		rl.ips.Range(func(key, value interface{}) bool {
-			v := value.(*visitor)
-			if time.Since(v.lastSeen) > 3*time.Minute {
-				rl.ips.Delete(key)
-			}
-			return true
-		})
+		select {
+		case <-rl.stopChan:
+			return
+		case <-ticker.C:
+			rl.ips.Range(func(key, value interface{}) bool {
+				v := value.(*visitor)
+				if time.Since(v.lastSeen) > 3*time.Minute {
+					rl.ips.Delete(key)
+				}
+				return true
+			})
+		}
 	}
 }

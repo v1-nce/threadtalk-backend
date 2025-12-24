@@ -1,13 +1,19 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
-	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/v1-nce/threadtalk-backend/internal/models"
 )
 
@@ -18,12 +24,30 @@ type ForumHandler struct {
 func (h *ForumHandler) CreateTopic(c *gin.Context) {
 	var input models.Topic
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
 	query := `INSERT INTO topics (name, description) VALUES ($1, $2) RETURNING id, created_at`
-	if err := h.DB.QueryRowContext(c.Request.Context(), query, input.Name, input.Description).Scan(&input.ID, &input.CreatedAt); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Topic name already exists"})
+	if err := h.DB.QueryRowContext(ctx, query, input.Name, input.Description).Scan(&input.ID, &input.CreatedAt); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("WARN: Request timeout creating topic: %s", input.Name)
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				c.JSON(http.StatusConflict, gin.H{"error": "Topic name already exists"})
+				return
+			}
+			errStr := err.Error()
+			if strings.Contains(errStr, "23505") || strings.Contains(errStr, "duplicate key value violates unique constraint") {
+				c.JSON(http.StatusConflict, gin.H{"error": "Topic name already exists"})
+				return
+			}
+			log.Printf("ERROR: Failed to create topic %s: %v", input.Name, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create topic"})
+		}
 		return
 	}
 	c.JSON(http.StatusCreated, input)
@@ -32,14 +56,41 @@ func (h *ForumHandler) CreateTopic(c *gin.Context) {
 func (h *ForumHandler) CreatePost(c *gin.Context) {
 	var input models.Post
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
-	uid, _ := c.Get("userID")
-	input.UserID = uid.(int64)
+	uid, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, ok := uid.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	input.UserID = userID
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
 	query := `INSERT INTO posts (title, content, user_id, topic_id) VALUES ($1, $2, $3, $4) RETURNING id, created_at`
-	if err := h.DB.QueryRowContext(c.Request.Context(), query, input.Title, input.Content, input.UserID, input.TopicID).Scan(&input.ID, &input.CreatedAt); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
+	if err := h.DB.QueryRowContext(ctx, query, input.Title, input.Content, input.UserID, input.TopicID).Scan(&input.ID, &input.CreatedAt); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("WARN: Request timeout creating post in topic %d by user %d", input.TopicID, input.UserID)
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid topic ID"})
+				return
+			}
+			errStr := err.Error()
+			if strings.Contains(errStr, "23503") || strings.Contains(errStr, "foreign key constraint") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid topic ID"})
+				return
+			}
+			log.Printf("ERROR: Failed to create post in topic %d by user %d: %v", input.TopicID, input.UserID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
+		}
 		return
 	}
 	c.JSON(http.StatusCreated, input)
@@ -48,51 +99,158 @@ func (h *ForumHandler) CreatePost(c *gin.Context) {
 func (h *ForumHandler) CreateComment(c *gin.Context) {
 	var input models.Comment
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
-	uid, _ := c.Get("userID")
-	input.UserID = uid.(int64)
+	uid, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, ok := uid.(int64)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID"})
+		return
+	}
+	input.UserID = userID
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
 	query := `INSERT INTO comments (content, user_id, post_id, parent_id) VALUES ($1, $2, $3, $4) RETURNING id, created_at`
-	if err := h.DB.QueryRowContext(c.Request.Context(), query, input.Content, input.UserID, input.PostID, input.ParentID).Scan(&input.ID, &input.CreatedAt); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to post comment"})
+	if err := h.DB.QueryRowContext(ctx, query, input.Content, input.UserID, input.PostID, input.ParentID).Scan(&input.ID, &input.CreatedAt); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("WARN: Request timeout creating comment on post %d by user %d", input.PostID, input.UserID)
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				if input.ParentID != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID or parent comment ID"})
+				} else {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+				}
+				return
+			}
+			errStr := err.Error()
+			if strings.Contains(errStr, "23503") || strings.Contains(errStr, "foreign key constraint") {
+				if input.ParentID != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID or parent comment ID"})
+				} else {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+				}
+				return
+			}
+			log.Printf("ERROR: Failed to create comment on post %d by user %d: %v", input.PostID, input.UserID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to post comment"})
+		}
 		return
 	}
 	input.Children = []*models.Comment{}
 	c.JSON(http.StatusCreated, input)
 }
 
+func (h *ForumHandler) GetTopics(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	query := `SELECT id, name, description, created_at FROM topics ORDER BY name ASC`
+	rows, err := h.DB.QueryContext(ctx, query)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("WARN: Request timeout fetching topics")
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else {
+			log.Printf("ERROR: Failed to fetch topics: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch topics"})
+		}
+		return
+	}
+	defer rows.Close()
+	topics := make([]models.Topic, 0)
+	for rows.Next() {
+		var t models.Topic
+		if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.CreatedAt); err != nil {
+			log.Printf("ERROR: Failed to scan topic row: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch topics"})
+			return
+		}
+		topics = append(topics, t)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("ERROR: Error iterating topics: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch topics"})
+		return
+	}
+	c.JSON(http.StatusOK, topics)
+}
+
 func (h *ForumHandler) GetPosts(c *gin.Context) {
-	topicID := c.Param("topic_id")
+	topicIDStr := c.Param("topic_id")
+	topicID, err := strconv.ParseInt(topicIDStr, 10, 64)
+	if err != nil || topicID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid topic ID"})
+		return
+	}
 	limit := 20
 	cursorStr := c.Query("cursor")
+	search := c.Query("search")
 	var cursor int64
 	if cursorStr != "" {
-		cursor, _ = strconv.ParseInt(cursorStr, 10, 64)
+		var parseErr error
+		cursor, parseErr = strconv.ParseInt(cursorStr, 10, 64)
+		if parseErr != nil || cursor <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid cursor parameter"})
+			return
+		}
 	}
-	query := `SELECT p.id, p.title, p.content, p.created_at, u.username FROM posts p JOIN users u ON p.user_id = u.id WHERE p.topic_id = $1`
+	query := `
+		SELECT p.id, p.title, p.content, p.created_at, u.username,
+		(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)
+		FROM posts p 
+		JOIN users u ON p.user_id = u.id 
+		WHERE p.topic_id = $1`
 	args := []interface{}{topicID}
-	if cursor > 0 {
-		query += ` AND p.id < $2`
-		args = append(args, cursor)
+	argPos := 2
+	if search != "" {
+		if len(search) > 200 {
+			search = search[:200]
+		}
+		query += fmt.Sprintf(` AND (p.title ILIKE $%d OR p.content ILIKE $%d)`, argPos, argPos)
+		args = append(args, "%"+search+"%")
+		argPos++
 	}
-	query += fmt.Sprintf(` ORDER BY p.id DESC LIMIT $%d`, len(args)+1)
+	if cursor > 0 {
+		query += fmt.Sprintf(` AND p.id < $%d`, argPos)
+		args = append(args, cursor)
+		argPos++
+	}
+	query += fmt.Sprintf(` ORDER BY p.id DESC LIMIT $%d`, argPos)
 	args = append(args, limit+1)
-	rows, err := h.DB.QueryContext(c.Request.Context(), query, args...)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+	rows, err := h.DB.QueryContext(ctx, query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database unavailable"})
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("WARN: Request timeout fetching posts for topic %d", topicID)
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else {
+			log.Printf("ERROR: Failed to fetch posts for topic %d: %v", topicID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
+		}
 		return
 	}
 	defer rows.Close()
 	posts := make([]models.Post, 0, limit)
 	for rows.Next() {
 		var p models.Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.Content, &p.CreatedAt, &p.Username); err == nil {
-			posts = append(posts, p)
+		if err := rows.Scan(&p.ID, &p.Title, &p.Content, &p.CreatedAt, &p.Username, &p.CommentCount); err != nil {
+			log.Printf("ERROR: Failed to scan post row for topic %d: %v", topicID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
+			return
 		}
+		posts = append(posts, p)
 	}
 	if err := rows.Err(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error streaming posts"})
+		log.Printf("ERROR: Error iterating posts for topic %d: %v", topicID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
 		return
 	}
 	var nextCursor string
@@ -104,7 +262,14 @@ func (h *ForumHandler) GetPosts(c *gin.Context) {
 }
 
 func (h *ForumHandler) GetPostWithComments(c *gin.Context) {
-	postID := c.Param("post_id")
+	postIDStr := c.Param("post_id")
+	postID, err := strconv.ParseInt(postIDStr, 10, 64)
+	if err != nil || postID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 	var post models.Post
 	var rootComments []*models.Comment
 	errs := make(chan error, 2)
@@ -112,18 +277,23 @@ func (h *ForumHandler) GetPostWithComments(c *gin.Context) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		err := h.DB.QueryRowContext(c.Request.Context(), `
-			SELECT p.id, p.title, p.content, p.created_at, u.username 
+		err := h.DB.QueryRowContext(ctx, `
+			SELECT p.id, p.title, p.content, p.created_at, u.username,
+			(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) 
 			FROM posts p JOIN users u ON p.user_id = u.id 
 			WHERE p.id = $1`, postID).
-			Scan(&post.ID, &post.Title, &post.Content, &post.CreatedAt, &post.Username)
+			Scan(&post.ID, &post.Title, &post.Content, &post.CreatedAt, &post.Username, &post.CommentCount)
 		if err != nil {
-			errs <- fmt.Errorf("post: %w", err)
+			if err == sql.ErrNoRows {
+				errs <- fmt.Errorf("post not found: %w", err)
+			} else {
+				errs <- fmt.Errorf("post: %w", err)
+			}
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		rows, err := h.DB.QueryContext(c.Request.Context(), `
+		rows, err := h.DB.QueryContext(ctx, `
 			SELECT c.id, c.content, c.user_id, c.parent_id, c.created_at, u.username
 			FROM comments c
 			JOIN users u ON c.user_id = u.id
@@ -137,7 +307,10 @@ func (h *ForumHandler) GetPostWithComments(c *gin.Context) {
 		var allComments []*models.Comment
 		for rows.Next() {
 			c := &models.Comment{Children: []*models.Comment{}}
-			rows.Scan(&c.ID, &c.Content, &c.UserID, &c.ParentID, &c.CreatedAt, &c.Username)
+			if err := rows.Scan(&c.ID, &c.Content, &c.UserID, &c.ParentID, &c.CreatedAt, &c.Username); err != nil {
+				errs <- fmt.Errorf("comment scan: %w", err)
+				return
+			}
 			allComments = append(allComments, c)
 		}
 		if rows.Err() != nil {
@@ -150,7 +323,15 @@ func (h *ForumHandler) GetPostWithComments(c *gin.Context) {
 	close(errs)
 	for err := range errs {
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch data"})
+			if ctx.Err() == context.DeadlineExceeded {
+				log.Printf("WARN: Request timeout fetching post %d with comments", postID)
+				c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+			} else if err.Error() == "post not found: sql: no rows in result set" || err.Error() == "post: sql: no rows in result set" {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+			} else {
+				log.Printf("ERROR: Failed to fetch post %d with comments: %v", postID, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch data"})
+			}
 			return
 		}
 	}
@@ -177,30 +358,4 @@ func buildCommentTree(all []*models.Comment) []*models.Comment {
 		}
 	}
 	return roots
-}
-
-func (h *ForumHandler) GetTopics(c *gin.Context) {
-    query := `SELECT id, name, description, created_at FROM topics ORDER BY name ASC`
-    
-    rows, err := h.DB.QueryContext(c.Request.Context(), query)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch topics"})
-        return
-    }
-    defer rows.Close()
-
-    topics := make([]models.Topic, 0)
-    for rows.Next() {
-        var t models.Topic
-        if err := rows.Scan(&t.ID, &t.Name, &t.Description, &t.CreatedAt); err == nil {
-            topics = append(topics, t)
-        }
-    }
-
-    if err := rows.Err(); err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Error reading topics"})
-        return
-    }
-
-    c.JSON(http.StatusOK, topics)
 }

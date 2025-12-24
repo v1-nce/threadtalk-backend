@@ -6,7 +6,7 @@ import (
 
 type Topic struct {
 	ID          int64     `json:"id"`
-	Name        string    `json:"name" binding:"required,max=70"`
+	Name        string    `json:"name" binding:"required,max=50"`
 	Description string    `json:"description" binding:"max=600"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -14,11 +14,12 @@ type Topic struct {
 type Post struct {
 	ID        int64     `json:"id,string"`
 	Title     string    `json:"title" binding:"required,min=5,max=250"`
-	Content   string    `json:"content" binding:"required,min=5"`
+	Content   string    `json:"content" binding:"max=600"`
 	UserID    int64     `json:"user_id,string"`
 	TopicID   int64     `json:"topic_id,string" binding:"required"`
 	CreatedAt time.Time `json:"created_at"`
 	Username  string    `json:"username,omitempty"`
+	CommentCount int `json:"comment_count"`
 }
 
 type Comment struct {

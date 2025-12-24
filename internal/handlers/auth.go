@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/v1-nce/threadtalk-backend/internal/models"
 	"github.com/v1-nce/threadtalk-backend/internal/utils"
 	"golang.org/x/crypto/bcrypt"
@@ -17,19 +21,39 @@ type AuthHandler struct {
 func (h *AuthHandler) Signup(c *gin.Context) {
 	var input models.AuthInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	if len(input.Username) < 3 || len(input.Username) > 50 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username must be between 3 and 50 characters"})
+		return
+	}
+	if len(input.Password) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
 		return
 	}
 	hashedPwd, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Encryption Failed"})
+		log.Printf("ERROR: Failed to hash password for user %s: %v", input.Username, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account"})
 		return
 	}
 	var user models.User
 	user.Username = input.Username
 	query := `INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, created_at, updated_at`
-	if err := h.DB.QueryRow(query, input.Username, string(hashedPwd)).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt); err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "User already exists"})
+	if err := h.DB.QueryRowContext(c.Request.Context(), query, input.Username, string(hashedPwd)).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+			return
+		}
+		errStr := err.Error()
+		if strings.Contains(errStr, "23505") || strings.Contains(errStr, "duplicate key value violates unique constraint") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+			return
+		}
+		log.Printf("ERROR: Failed to create user %s: %v", input.Username, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create account"})
 		return
 	}
 	c.JSON(http.StatusCreated, user)
@@ -38,20 +62,34 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var input models.AuthInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+		return
+	}
+	if input.Username == "" || input.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username and password are required"})
 		return
 	}
 	var user models.User
 	query := `SELECT id, username, password_hash, created_at, updated_at FROM users WHERE username = $1`
-	if err := h.DB.QueryRow(query, input.Username).Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.UpdatedAt); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Credentials"})
+	if err := h.DB.QueryRowContext(c.Request.Context(), query, input.Username).Scan(&user.ID, &user.Username, &user.Password, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+		log.Printf("ERROR: Database error during login for username %s: %v", input.Username, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication failed"})
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalud Credentials"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
-	token, _ := utils.GenerateToken(user.ID)
+	token, err := utils.GenerateToken(user.ID)
+	if err != nil {
+		log.Printf("ERROR: Failed to generate token for user ID %d: %v", user.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication failed"})
+		return
+	}
 	c.SetCookie("auth_token", token, 3600*24, "/", "", false, true)
 	c.JSON(http.StatusOK, user)
 }
@@ -75,8 +113,15 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	}
 	var user models.User
 	query := `SELECT id, username, created_at, updated_at FROM users WHERE id = $1`
-	if err := h.DB.QueryRow(query, userID).Scan(&user.ID, &user.Username, &user.CreatedAt, &user.UpdatedAt); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+	if err := h.DB.QueryRowContext(c.Request.Context(), query, userID).Scan(&user.ID, &user.Username, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("WARN: User ID %d not found in database", userID)
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		} else {
+			log.Printf("ERROR: Failed to retrieve user ID %d: %v", userID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user information"})
+		}
+		return
 	}
 	c.JSON(http.StatusOK, user)
 }
