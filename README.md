@@ -1,6 +1,9 @@
 # ThreadTalk Backend API
 
-**ThreadTalk** is a scalable REST API providing user authentication, threaded discussions, and pagination. It is engineered to run as a serverless container on AWS Lambda, utilizing the AWS Lambda Web Adapter for seamless portability between local development and cloud execution.
+**threadtalk-backend** is a scalable REST API providing user authentication, threaded discussions, and pagination. It is engineered to run as a serverless container on AWS Lambda, utilizing the AWS Lambda Web Adapter for seamless portability between local development and cloud execution.
+
+**Frontend Repository Here:** [https://github.com/v1-nce/threadtalk-frontend](https://github.com/v1-nce/threadtalk-frontend)
+**Deployed Application Here:** [https://threadtalk-app.vercel.app](https://threadtalk-app.vercel.app)
 
 ## Overview
 
