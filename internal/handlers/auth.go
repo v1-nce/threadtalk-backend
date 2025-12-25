@@ -90,13 +90,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication failed"})
 		return
 	}
-	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("auth_token", token, 3600*24, "/", "", true, true)
 	c.JSON(http.StatusOK, user)
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
-	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("auth_token", "", -1, "/", "", true, true)
 	c.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
 }
