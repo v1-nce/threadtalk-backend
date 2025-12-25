@@ -90,12 +90,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication failed"})
 		return
 	}
-	c.SetCookie("auth_token", token, 3600*24, "/", "", false, true)
+	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetCookie("auth_token", token, 3600*24, "/", "", true, true)
 	c.JSON(http.StatusOK, user)
 }
 
 func (h *AuthHandler) Logout(c *gin.Context) {
-	c.SetCookie("auth_token", "", -1, "/", "localhost", false, true)
+	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetCookie("auth_token", "", -1, "/", "", true, true)
 	c.JSON(http.StatusOK, gin.H{"message": "Successfully logged out"})
 }
 
@@ -105,7 +107,6 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: No user ID found"})
 		return
 	}
-	// Type Assertion
 	userID, ok := userIDVal.(int64)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal type mismatch"})
