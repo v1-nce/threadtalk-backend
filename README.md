@@ -33,13 +33,13 @@ REST API providing user authentication, threaded discussions, and pagination. Op
 
 **Prerequisites:** Docker Desktop
 
-1. Clone and configure:
+1. Clone the repository:
 ```bash
 git clone https://github.com/v1-nce/threadtalk-backend.git
 cd threadtalk-backend
 ```
 
-2. Create `.env`:
+2. Create `.env` file in the project root:
 ```bash
 DB_USER=postgres
 DB_PASSWORD=your_password
@@ -51,12 +51,39 @@ FRONTEND_URL=http://localhost:3000
 PORT=8080
 ```
 
-3. Start services:
+3. Start the backend:
 ```bash
 docker-compose up --build
 ```
 
-API runs at `http://localhost:8080`
+The API will be available at `http://localhost:8080`. Database migrations run automatically on startup.
+
+## Development Workflow
+
+**Making Code Changes:**
+
+1. Edit your code files
+2. Rebuild and restart the backend:
+   ```bash
+   docker-compose up --build
+   ```
+   This rebuilds the Docker image with your changes and restarts the service.
+
+**Alternative (faster restart without rebuild):**
+```bash
+docker-compose restart backend
+```
+Note: Use this only if you haven't changed dependencies or Dockerfile. For code changes, use `--build`.
+
+**Stopping the backend:**
+```bash
+docker-compose down
+```
+
+**Viewing logs:**
+```bash
+docker-compose logs -f backend
+```
 
 ## Architecture
 ```
@@ -80,7 +107,9 @@ Client → Lambda Function URL → Lambda Web Adapter
 - `GET /topics/:topic_id/posts` - List posts (paginated)
 - `POST /api/posts` - Create post (protected)
 - `GET /posts/:post_id` - Get post with comments
+- `DELETE /api/posts/:post_id` - Delete post (protected)
 - `POST /api/comments` - Create comment (protected)
+- `DELETE /api/comments/:comment_id` - Delete comment (protected)
 
 **System:**
 - `GET /health` - Health check

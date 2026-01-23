@@ -70,6 +70,8 @@ func SetUpRouter(db *sql.DB) *gin.Engine {
 		protected.POST("/topics", forumHandler.CreateTopic)
 		protected.POST("/posts", forumHandler.CreatePost)
 		protected.POST("/comments", forumHandler.CreateComment)
+		protected.DELETE("/posts/:post_id", authLimit, forumHandler.DeletePost)
+		protected.DELETE("/comments/:comment_id", authLimit, forumHandler.DeleteComment)
 	}
 
 	return r

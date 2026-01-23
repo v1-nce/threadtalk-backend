@@ -201,12 +201,16 @@ func (h *ForumHandler) GetPosts(c *gin.Context) {
 			return
 		}
 	}
-	query := `
-		SELECT p.id, p.title, p.content, p.created_at, u.username,
-		(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)
-		FROM posts p 
-		JOIN users u ON p.user_id = u.id 
-		WHERE p.topic_id = $1`
+	query := `SELECT p.id,
+		CASE WHEN p.deleted_at IS NULL THEN p.title ELSE '[deleted]' END,
+		CASE WHEN p.deleted_at IS NULL THEN p.content ELSE '[deleted]' END,
+		CASE WHEN p.deleted_at IS NULL THEN p.user_id ELSE 0 END,
+		p.created_at,
+		CASE WHEN p.deleted_at IS NULL THEN u.username ELSE '[deleted]' END,
+		(SELECT COUNT(*) FROM comments WHERE post_id = p.id)
+	FROM posts p
+	JOIN users u ON p.user_id = u.id
+	WHERE p.topic_id = $1`
 	args := []interface{}{topicID}
 	argPos := 2
 	if search != "" {
@@ -241,7 +245,7 @@ func (h *ForumHandler) GetPosts(c *gin.Context) {
 	posts := make([]models.Post, 0, limit)
 	for rows.Next() {
 		var p models.Post
-		if err := rows.Scan(&p.ID, &p.Title, &p.Content, &p.CreatedAt, &p.Username, &p.CommentCount); err != nil {
+		if err := rows.Scan(&p.ID, &p.Title, &p.Content, &p.UserID, &p.CreatedAt, &p.Username, &p.CommentCount); err != nil {
 			log.Printf("ERROR: Failed to scan post row for topic %d: %v", topicID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch posts"})
 			return
@@ -278,11 +282,17 @@ func (h *ForumHandler) GetPostWithComments(c *gin.Context) {
 	go func() {
 		defer wg.Done()
 		err := h.DB.QueryRowContext(ctx, `
-			SELECT p.id, p.title, p.content, p.created_at, u.username,
-			(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) 
-			FROM posts p JOIN users u ON p.user_id = u.id 
+			SELECT p.id,
+				CASE WHEN p.deleted_at IS NULL THEN p.title ELSE '[deleted]' END,
+				CASE WHEN p.deleted_at IS NULL THEN p.content ELSE '[deleted]' END,
+				CASE WHEN p.deleted_at IS NULL THEN p.user_id ELSE 0 END,
+				p.created_at,
+				CASE WHEN p.deleted_at IS NULL THEN u.username ELSE '[deleted]' END,
+				(SELECT COUNT(*) FROM comments WHERE post_id = p.id)
+			FROM posts p
+			JOIN users u ON p.user_id = u.id
 			WHERE p.id = $1`, postID).
-			Scan(&post.ID, &post.Title, &post.Content, &post.CreatedAt, &post.Username, &post.CommentCount)
+			Scan(&post.ID, &post.Title, &post.Content, &post.UserID, &post.CreatedAt, &post.Username, &post.CommentCount)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				errs <- fmt.Errorf("post not found: %w", err)
@@ -294,10 +304,13 @@ func (h *ForumHandler) GetPostWithComments(c *gin.Context) {
 	go func() {
 		defer wg.Done()
 		rows, err := h.DB.QueryContext(ctx, `
-			SELECT c.id, c.content, c.user_id, c.parent_id, c.created_at, u.username
+			SELECT c.id,
+				CASE WHEN c.deleted_at IS NULL THEN c.content ELSE '[deleted]' END,
+				c.user_id, c.parent_id, c.created_at,
+				CASE WHEN c.deleted_at IS NULL THEN u.username ELSE '[deleted]' END
 			FROM comments c
 			JOIN users u ON c.user_id = u.id
-			WHERE c.post_id = $1 
+			WHERE c.post_id = $1
 			ORDER BY c.created_at ASC`, postID)
 		if err != nil {
 			errs <- fmt.Errorf("comments: %w", err)
@@ -358,4 +371,78 @@ func buildCommentTree(all []*models.Comment) []*models.Comment {
 		}
 	}
 	return roots
+}
+
+func (h *ForumHandler) DeletePost(c *gin.Context) {
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil || postID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	uid, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, ok := uid.(int64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	var deletedID int64
+	err = h.DB.QueryRowContext(ctx,
+		`UPDATE posts SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+		postID, userID).Scan(&deletedID)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Request timeout deleting post %d by user %d", postID, userID)
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		} else {
+			log.Printf("Failed to delete post %d by user %d: %v", postID, userID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete post"})
+		}
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *ForumHandler) DeleteComment(c *gin.Context) {
+	commentID, err := strconv.ParseInt(c.Param("comment_id"), 10, 64)
+	if err != nil || commentID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"})
+		return
+	}
+	uid, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, ok := uid.(int64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	var deletedID int64
+	err = h.DB.QueryRowContext(ctx,
+		`UPDATE comments SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL RETURNING id`,
+		commentID, userID).Scan(&deletedID)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Request timeout deleting comment %d by user %d", commentID, userID)
+			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"})
+		} else {
+			log.Printf("Failed to delete comment %d by user %d: %v", commentID, userID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comment"})
+		}
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

@@ -191,6 +191,34 @@ Response:
     "children": []
 }
 
+DELETE /api/posts/:post_id
+Request:
+Example: DELETE /api/posts/123
+Requires authentication (JWT cookie)
+Response:
+Status: 204 No Content (on success)
+Error Responses:
+- 400: Invalid post ID
+- 401: Unauthorized (no auth token)
+- 404: Post not found (doesn't exist, doesn't belong to user, or already deleted)
+- 408: Request timeout
+- 500: Internal server error
+Note: Deleted posts show as "[deleted]" in title, content, and username fields when fetched via GET endpoints
+
+DELETE /api/comments/:comment_id
+Request:
+Example: DELETE /api/comments/456
+Requires authentication (JWT cookie)
+Response:
+Status: 204 No Content (on success)
+Error Responses:
+- 400: Invalid comment ID
+- 401: Unauthorized (no auth token)
+- 404: Comment not found (doesn't exist, doesn't belong to user, or already deleted)
+- 408: Request timeout
+- 500: Internal server error
+Note: Deleted comments show as "[deleted]" in content and username fields when fetched via GET endpoints. Child comments remain visible.
+
 == Dependencies Summary ==
 List of Dependencies Applied:
 go get github.com/jackc/pgx/v5/stdlib
