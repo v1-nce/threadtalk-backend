@@ -21,8 +21,6 @@ type ForumHandler struct {
 	DB *sql.DB
 }
 
-// isPgError checks if the error matches a PostgreSQL error code.
-// Handles both native pgconn.PgError and string-based error matching for compatibility.
 func isPgError(err error, code string) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == code {
