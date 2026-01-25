@@ -244,4 +244,8 @@ git push origin feature/your-feature-name
 3. Select your fork and branch
 4. Describe your changes and submit
 
-We'll review your PR and provide feedback!
+---
+
+## AI Declaration
+
+Gemini 3.0 Pro was only used for research, information gathering and to tutor myself to learn new technologies.
