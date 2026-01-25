@@ -21,6 +21,16 @@ type ForumHandler struct {
 	DB *sql.DB
 }
 
+// isPgError checks if the error matches a PostgreSQL error code.
+// Handles both native pgconn.PgError and string-based error matching for compatibility.
+func isPgError(err error, code string) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == code {
+		return true
+	}
+	return strings.Contains(err.Error(), code)
+}
+
 func (h *ForumHandler) CreateTopic(c *gin.Context) {
 	var input models.Topic
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -34,17 +44,9 @@ func (h *ForumHandler) CreateTopic(c *gin.Context) {
 		if ctx.Err() == context.DeadlineExceeded {
 			log.Printf("WARN: Request timeout creating topic: %s", input.Name)
 			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else if isPgError(err, "23505") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Topic name already exists"})
 		} else {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				c.JSON(http.StatusConflict, gin.H{"error": "Topic name already exists"})
-				return
-			}
-			errStr := err.Error()
-			if strings.Contains(errStr, "23505") || strings.Contains(errStr, "duplicate key value violates unique constraint") {
-				c.JSON(http.StatusConflict, gin.H{"error": "Topic name already exists"})
-				return
-			}
 			log.Printf("ERROR: Failed to create topic %s: %v", input.Name, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create topic"})
 		}
@@ -77,17 +79,9 @@ func (h *ForumHandler) CreatePost(c *gin.Context) {
 		if ctx.Err() == context.DeadlineExceeded {
 			log.Printf("WARN: Request timeout creating post in topic %d by user %d", input.TopicID, input.UserID)
 			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else if isPgError(err, "23503") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid topic ID"})
 		} else {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid topic ID"})
-				return
-			}
-			errStr := err.Error()
-			if strings.Contains(errStr, "23503") || strings.Contains(errStr, "foreign key constraint") {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid topic ID"})
-				return
-			}
 			log.Printf("ERROR: Failed to create post in topic %d by user %d: %v", input.TopicID, input.UserID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create post"})
 		}
@@ -120,25 +114,13 @@ func (h *ForumHandler) CreateComment(c *gin.Context) {
 		if ctx.Err() == context.DeadlineExceeded {
 			log.Printf("WARN: Request timeout creating comment on post %d by user %d", input.PostID, input.UserID)
 			c.JSON(http.StatusRequestTimeout, gin.H{"error": "Request timeout"})
+		} else if isPgError(err, "23503") {
+			if input.ParentID != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID or parent comment ID"})
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+			}
 		} else {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				if input.ParentID != nil {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID or parent comment ID"})
-				} else {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
-				}
-				return
-			}
-			errStr := err.Error()
-			if strings.Contains(errStr, "23503") || strings.Contains(errStr, "foreign key constraint") {
-				if input.ParentID != nil {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID or parent comment ID"})
-				} else {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
-				}
-				return
-			}
 			log.Printf("ERROR: Failed to create comment on post %d by user %d: %v", input.PostID, input.UserID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to post comment"})
 		}

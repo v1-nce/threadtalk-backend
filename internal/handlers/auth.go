@@ -2,13 +2,10 @@ package handlers
 
 import (
 	"database/sql"
-	"errors"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/v1-nce/threadtalk-backend/internal/models"
 	"github.com/v1-nce/threadtalk-backend/internal/utils"
 	"golang.org/x/crypto/bcrypt"
@@ -42,13 +39,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 	user.Username = input.Username
 	query := `INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, created_at, updated_at`
 	if err := h.DB.QueryRowContext(c.Request.Context(), query, input.Username, string(hashedPwd)).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
-			return
-		}
-		errStr := err.Error()
-		if strings.Contains(errStr, "23505") || strings.Contains(errStr, "duplicate key value violates unique constraint") {
+		if isPgError(err, "23505") {
 			c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
 			return
 		}

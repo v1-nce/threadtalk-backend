@@ -1,46 +1,50 @@
-# ThreadTalk Backend API
+# ThreadTalk Backend
 
-**threadtalk-backend** is a scalable REST API providing user authentication, threaded discussions, and pagination. It is engineered to run as a serverless container on AWS Lambda, utilizing the AWS Lambda Web Adapter for seamless portability between local development and cloud execution.
+Threadtalk-backend is a production-ready REST API for a lightweight threaded discussion forum inspired by Reddit! Built with Go and optimized for AWS Lambda serverless deployment with PostgreSQL.
 
-**Frontend Repository Here:** [https://github.com/v1-nce/threadtalk-frontend](https://github.com/v1-nce/threadtalk-frontend)
-**Deployed Application Here:** [https://threadtalk-app.vercel.app](https://threadtalk-app.vercel.app)
+**Live Deployment:** [https://threadtalk-app.vercel.app](https://threadtalk-app.vercel.app)  
+**Frontend Repository:** [https://github.com/v1-nce/threadtalk-frontend](https://github.com/v1-nce/threadtalk-frontend)
 
-## Overview
+---
 
-REST API providing user authentication, threaded discussions, and pagination. Optimized for AWS Lambda with connection pooling, rate limiting, and comprehensive security.
+- 🔐 **Authentication** — JWT-based auth with HTTP-only cookies (Signup/Login/Logout)
+- 🗂️ **Topic Management** — Create and browse discussion topics
+- 📝 **Post System** — Create, view, and soft-delete posts with search
+- 💬 **Threaded Comments** — Nested comment trees with unlimited depth
+- ⚡ **Pagination** — Efficient cursor-based pagination for posts
+- 🛡️ **Security** — BCrypt hashing, rate limiting, SQL injection prevention
+- 🚀 **Lambda Ready** — Optimized connection pooling, context-based timeouts
 
-**Core Features:**
-* **Authentication:** JWT-based stateless auth with HTTP-only cookies (Signup/Login/Logout)
-* **Forum Management:** Create and browse topics, posts, and nested comments
-* **Search:** Full-text search across post titles and content
-* **Pagination:** Efficient cursor-based pagination for posts
-* **Nested Comments:** Hierarchical comment trees with parent-child relationships
-* **Security:** BCrypt password hashing, SQL injection prevention, input validation
-* **Error Handling:** Proper HTTP status codes (400/401/404/409/500) with server-side logging
-* **Rate Limiting:** IP-based rate limiting (1 req/sec for auth, 5 req/sec for public endpoints)
-* **Connection Pooling:** Lambda-optimized database connection pool (5 max connections)
-* **Timeout Management:** Context-based timeouts for all database operations
-* **Health Checks:** `/health` endpoint for service monitoring
+---
 
 ## Tech Stack
 
-- **Backend:** Go 1.24, Gin, pgx/v5, JWT
-- **Database:** PostgreSQL 16 with migrations
-- **Infrastructure:** AWS Lambda (Docker), ECR, CloudWatch
-- **CI/CD:** GitHub Actions with AWS OIDC
+| Category | Technology |
+|----------|------------|
+| **Framework** | Go 1.24, Gin |
+| **Database** | PostgreSQL 16, pgx/v5 |
+| **Auth** | JWT (golang-jwt/jwt/v5) |
+| **Infrastructure** | AWS Lambda, Docker, ECR, RDS PostgreSQL |
+| **CI/CD** | GitHub Actions, OIDC |
 
-## Quick Start
+---
 
-**Prerequisites:** Docker Desktop
+## Quick Start (Local Development)
 
-1. Clone the repository:
+### Prerequisites
+
+- **Docker Desktop** — [Download here](https://www.docker.com/products/docker-desktop/). Make sure it's running before proceeding.
+
+### 1. Clone and Configure
+
 ```bash
 git clone https://github.com/v1-nce/threadtalk-backend.git
 cd threadtalk-backend
 ```
 
-2. Create `.env` file in the project root:
-```bash
+Create `.env` in project root:
+
+```env
 DB_USER=postgres
 DB_PASSWORD=your_password
 DB_NAME=threadtalk
@@ -51,142 +55,193 @@ FRONTEND_URL=http://localhost:3000
 PORT=8080
 ```
 
-3. Start the backend:
+### 2. Build and Start
+
 ```bash
 docker-compose up --build
 ```
 
-The API will be available at `http://localhost:8080`. Database migrations run automatically on startup.
+This builds the Docker images and starts:
+- **PostgreSQL 16** — Database with persistent volume
+- **Backend API** — Go server on `http://localhost:8080`
 
-## Development Workflow
+Migrations run automatically on startup. Wait for `Connected to PostgreSQL Database` in the logs.
 
-**Making Code Changes:**
+### 3. Stop the Backend
 
-1. Edit your code files
-2. Rebuild and restart the backend:
-   ```bash
-   docker-compose up --build
-   ```
-   This rebuilds the Docker image with your changes and restarts the service.
-
-**Alternative (faster restart without rebuild):**
-```bash
-docker-compose restart backend
-```
-Note: Use this only if you haven't changed dependencies or Dockerfile. For code changes, use `--build`.
-
-**Stopping the backend:**
 ```bash
 docker-compose down
 ```
 
-**Viewing logs:**
-```bash
-docker-compose logs -f backend
+> **Note:** Add `-v` to also delete the database volume: `docker-compose down -v`
+
+---
+
+## Development Workflow
+
+| Scenario | Command |
+|----------|---------|
+| **First time setup** | `docker-compose up --build` |
+| **After modifying Go code** | `docker-compose up --build` |
+| **Restart without code changes** | `docker-compose up` |
+| **Stop all containers** | `docker-compose down` |
+| **View real-time logs** | `docker-compose logs -f backend` |
+| **Reset database** | `docker-compose down -v` then `docker-compose up --build` |
+
+> **Why `--build`?** The Docker setup compiles Go to a binary. Unlike interpreted languages, Go changes require recompiling. The `--build` flag rebuilds the image with your latest code.
+
+---
+
+## Project Structure
+
+```
+threadtalk-backend/
+├── cmd/api/main.go           # Entry point
+├── internal/
+│   ├── db/                   # Database connection & migrations
+│   ├── handlers/             # HTTP handlers (auth, forum)
+│   ├── middleware/           # Auth & rate limiting middleware
+│   ├── models/               # Data models (User, Post, Comment)
+│   ├── router/               # Route definitions
+│   └── utils/                # JWT utilities
+├── .github/workflows/        # CI/CD pipeline
+├── Dockerfile                # Multi-stage build (local + lambda)
+└── docker-compose.yml        # Local development setup
 ```
 
-## Architecture
-```
-Client → Lambda Function URL → Lambda Web Adapter 
-→ Go App (Gin) → Connection Pool → PostgreSQL
-```
-
-**Connection Pool:** 5 max, 2 idle (Lambda-optimized)
+---
 
 ## API Endpoints
 
-**Auth:**
-- `POST /auth/signup` - Create account
-- `POST /auth/login` - Login (returns JWT cookie)
-- `POST /auth/logout` - Logout
-- `GET /api/profile` - Get profile (protected)
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/auth/signup` | Create account | No |
+| `POST` | `/auth/login` | Login (JWT cookie) | No |
+| `POST` | `/auth/logout` | Logout | No |
+| `GET` | `/api/profile` | Get profile | ✅ |
+| `GET` | `/topics` | List topics | No |
+| `POST` | `/api/topics` | Create topic | ✅ |
+| `GET` | `/topics/:id/posts` | List posts (paginated) | No |
+| `POST` | `/api/posts` | Create post | ✅ |
+| `GET` | `/posts/:id` | Get post with comments | No |
+| `DELETE` | `/api/posts/:id` | Delete post | ✅ |
+| `POST` | `/api/comments` | Create comment | ✅ |
+| `DELETE` | `/api/comments/:id` | Delete comment | ✅ |
+| `GET` | `/health` | Health check | No |
 
-**Forum:**
-- `GET /topics` - List topics
-- `POST /api/topics` - Create topic (protected)
-- `GET /topics/:topic_id/posts` - List posts (paginated)
-- `POST /api/posts` - Create post (protected)
-- `GET /posts/:post_id` - Get post with comments
-- `DELETE /api/posts/:post_id` - Delete post (protected)
-- `POST /api/comments` - Create comment (protected)
-- `DELETE /api/comments/:comment_id` - Delete comment (protected)
+See [API.md](./API.md) for complete documentation with request/response examples.
 
-**System:**
-- `GET /health` - Health check
-
-See [API.md](./API.md) for complete documentation.
-
-## Security
-
-- BCrypt password hashing (cost 10)
-- JWT tokens (24h expiration, HTTP-only cookies)
-- SQL injection prevention (parameterized queries)
-- Rate limiting: 1 req/s (auth), 5 req/s (public)
-- Input validation on all endpoints
-- CORS restricted to configured origins
-
-## Performance
-
-**Database:**
-- Connection pool: 5 max connections
-- Query timeouts: 5-10 seconds
-- Indexed queries for pagination/search
-
-**Caching Recommendations:**
-- Topics: 10 minutes
-- Posts: 2 minutes
-- Post details: 1 minute
-
-**Things that still need to be implemented:**
-- Optimise DB hits with materialised views
-- Caching with Redis
-- Index optimisation
+---
 
 ## Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `JWT_SECRET` | JWT signing key | Yes |
-| `FRONTEND_URL` | CORS origin | Yes |
-| `PORT` | Server port (default: 8080) | No |
+| `DATABASE_URL` | PostgreSQL connection string | ✅ |
+| `JWT_SECRET` | JWT signing key (min 32 chars recommended) | ✅ |
+| `FRONTEND_URL` | CORS origin (e.g., `http://localhost:3000`) | ✅ |
+| `PORT` | Server port | No (default: 8080) |
 
-## Project Structure
-```
-threadtalk-backend/
-├── cmd/api/main.go              # Entry point
-├── internal/
-│   ├── db/                      # Database & migrations
-│   ├── handlers/                # Auth & forum handlers
-│   ├── middleware/              # Auth & rate limiting
-│   ├── models/                  # Data models
-│   ├── router/                  # Routes
-│   └── utils/                   # JWT utilities
-├── .github/workflows/deploy.yml # CI/CD
-├── Dockerfile                   # Multi-stage build
-└── docker-compose.yml           # Local development
-```
+---
 
-## Docker
+## Production Deployment (CI/CD)
 
-**Local:**
-```bash
-docker build --target local -t threadtalk-backend:local .
-```
+This repository automatically deploys to **AWS Lambda** when you push to `main`.
 
-**Lambda:**
-```bash
-docker build --target lambda -t threadtalk-backend:lambda .
-```
+### How It Works
 
-## Monitoring
+1. You push code to the `main` branch
+2. GitHub Actions detects the push and starts the pipeline
+3. The pipeline authenticates with AWS using OIDC (no passwords stored)
+4. It builds a Docker image optimized for Lambda
+5. The image is pushed to Amazon ECR (container registry)
+6. Lambda is updated to use the new image
+7. Your changes are live!
 
-- Structured logging to CloudWatch
-- Health check at `/health`
-- Database connectivity validation
+### What You Need (First-Time Setup)
+
+**GitHub Secrets** (Settings → Secrets → Actions):
+
+| Secret | What It Is |
+|--------|------------|
+| `ECR_REPOSITORY` | Your ECR repository name (e.g., `threadtalk-backend`) |
+| `LAMBDA_FUNCTION_NAME` | Your Lambda function name |
+
+**AWS Resources:**
+
+| Resource | Purpose |
+|----------|---------|
+| ECR Repository | Stores your Docker images |
+| Lambda Function | Runs your API (configured for container images) |
+| IAM Role | Lets GitHub authenticate via OIDC |
+| RDS PostgreSQL | Production database |
+
+### Docker Build Stages
+
+The Dockerfile has two modes:
+
+| Target | Command | Use Case |
+|--------|---------|----------|
+| `local` | `docker-compose up --build` | Local development |
+| `lambda` | `docker build --target lambda .` | Production (includes Lambda adapter) |
+
+The Lambda build adds the [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) so the same Go HTTP server works on both your machine and Lambda.
+
+---
+
+## Security
+
+- **Password Hashing** — BCrypt (cost 10)
+- **JWT Tokens** — 24h expiration, HTTP-only cookies
+- **SQL Injection** — Parameterized queries only
+- **Rate Limiting** — 1 req/s (auth), 5 req/s (public)
+- **CORS** — Restricted to configured origins
+
+---
 
 ## Contributing
 
-1. Fork repository
-2. Create feature branch
-3. Submit pull request
+Want to contribute? Here's how:
+
+### Step 1: Fork the Repository
+
+Click the "Fork" button on GitHub to create your own copy.
+
+### Step 2: Clone Your Fork
+
+```bash
+git clone https://github.com/YOUR_USERNAME/threadtalk-backend.git
+cd threadtalk-backend
+```
+
+### Step 3: Create a Branch
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+Use descriptive names like `feature/add-user-avatars` or `fix/login-timeout`.
+
+### Step 4: Make Your Changes
+
+1. Set up the local environment (see [Quick Start](#quick-start-local-development))
+2. Make your code changes
+3. Test locally with `docker-compose up --build`
+4. Verify the API works as expected
+
+### Step 5: Commit and Push
+
+```bash
+git add .
+git commit -m "Add: description of your changes"
+git push origin feature/your-feature-name
+```
+
+### Step 6: Open a Pull Request
+
+1. Go to the original repository on GitHub
+2. Click "Pull Requests" → "New Pull Request"
+3. Select your fork and branch
+4. Describe your changes and submit
+
+We'll review your PR and provide feedback!

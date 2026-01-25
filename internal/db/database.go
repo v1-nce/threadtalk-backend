@@ -19,16 +19,14 @@ func Connect() (*sql.DB, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
 	}
-	// Validate that sslmode is set for production
-	// In production, we should enforce SSL/TLS
 	conn, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("unable to connect to database: %w", err)
 	}
-	conn.SetMaxOpenConns(5)                  // Maximum open connections (Lambda-optimized)
-	conn.SetMaxIdleConns(2)                  // Maximum idle connections
-	conn.SetConnMaxLifetime(5 * time.Minute) // Maximum connection lifetime
-	conn.SetConnMaxIdleTime(1 * time.Minute) // Maximum idle time before closing
+	conn.SetMaxOpenConns(5)
+	conn.SetMaxIdleConns(2)
+	conn.SetConnMaxLifetime(5 * time.Minute)
+	conn.SetConnMaxIdleTime(1 * time.Minute)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := conn.PingContext(ctx); err != nil {
